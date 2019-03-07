@@ -15,28 +15,34 @@ class App extends Component {
     this.myIpData = {}
   }
 
-  componentDidMount(){
+  componentDidMount() {
     this.setSocketListeners()
   }
 
+  componentWillUnmount() {
+    this.socket.disconnect();
+  }
+
   setSocketListeners = () => {
+    console.log('sockets')
     this.socket = io()
 
-    this.socket.on('callPeer', (data) => {
-      console.log('hit')
-      if(!this.initiator){
-        console.log(data)
-        this.setState({whatIsHappening: "someone is calling you!"})
-        this.gettingCall(data.ipData)
+    this.socket.on('call peer', (data) => {
+      if (!this.initiator) {
+        this.setState({ whatIsHappening: "Someone is calling you!" })
+        this.gettingCall(data.ipObj)
       }
     })
+    this.socket.on('answer peer', (data) => {
+      if (this.initiator) {
+        this.setState({ whatIsHappening: 'The other party answered your call!' })
+        this.gettingAnswer(data.ipObj)
+      }
+    })
+  }
 
-    this.socket.on('answerPeer', (data) => {
-      if(this.initiator){
-        this.setState({whatIsHappening: "other party answered you!"})
-        this.gettingAnswer(data.ipData)
-      }
-    })
+  joinRoom = () => {
+    this.socket.emit("joinRoom", this.state.room)
   }
 
   setRtcListeners = () => {
@@ -48,8 +54,8 @@ class App extends Component {
     })
 
     this.rtc.on('data', (data) => {
-      console.log(""+data.message)
-      this.setState({whatIsHappening: ""+data.message})
+      console.log(""+data)
+      this.setState({whatIsHappening: ""+data})
     })
 
     this.rtc.on('stream', function (stream) {
@@ -59,53 +65,49 @@ class App extends Component {
     })
   }
 
-  joinRoom = () => {
-    this.socket.emit('joinRoom', this.state.room)
-  }
-
   call = () => {
     this.initiator = true
-    navigator.getUserMedia({video:true, audio:true}, this.gotMedia, function(){})
+    navigator.getUserMedia({ video: true, audio: true }, this.gotMediaForCall, function () { })
   }
-
-  gettingCall = (ipData) => {
-    navigator.getUserMedia({video:true, audio:true}, (stream) => this.gotMediaAfterBeingCalled(stream, ipData), function(){})
+  
+  gettingCall = (ipObj) => {
+    navigator.getUserMedia({video:true, audio:true}, (stream) => this.gotMediaAfterBeingCalled(stream, ipObj), function(){})
   }
 
   answer = () => {
-    this.socket.emit('answerPeer', {room:this.state.room, initiator:this.initiator, ipData: JSON.stringify(this.myIpData)})
+    this.socket.emit('answer peer', { room:this.state.room, initiator:this.initiator, ipObj:JSON.stringify(this.myIpData)})
   }
 
-  gettingAnswer = (ipData) => {
-    this.rtc.signal(ipData)
+  gettingAnswer = (ipObj) => {
+    this.rtc.signal(ipObj)
   }
 
-  gotMedia = (stream) => {
-    this.rtc = new Peer({initiator: this.initiator, trickle:false, stream:stream})
+  gotMediaForCall = (stream) => {
+    this.rtc = new Peer({ initiator: this.initiator, trickle: false, stream: stream })
 
-    this.rtc.on('signal', (ipData) => {
-      this.myIpData = ipData
-      this.socket.emit('callPeer', {room:this.state.room, initiator:this.initiator, ipData:JSON.stringify(ipData)})
+    this.rtc.on('signal', (data) => {
+      this.myIpData = data
+      this.socket.emit('call peer', { room:this.state.room, initiator: this.initiator, ipObj: JSON.stringify(this.myIpData) })
     })
 
     this.setRtcListeners()
   }
 
-  gotMediaAfterBeingCalled = (stream, ipData) => {
-    this.rtc = new Peer({initiator: this.initiator, trickle:false, stream:stream})
-
+  gotMediaAfterBeingCalled = (stream, ipObj) => {
+    this.rtc = new Peer({ initiator: this.initiator, trickle:false, stream:stream })
+  
     this.rtc.on('signal', (data) => {
       if(data.renegotiate){return}
       this.myIpData = data
     })
 
-    this.rtc.signal(JSON.parse(ipData))
-
+    this.rtc.signal(JSON.parse(ipObj))
+  
     this.setRtcListeners()
   }
 
   sendMessage = () => {
-    this.rtc.send({type: 'MSG', message: this.state.message})
+    this.rtc.send(this.state.message)
   }
 
   render() {
